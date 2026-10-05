@@ -81,6 +81,7 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t 
 static void tx_com( uint8_t *tx_buffer, uint16_t len );
 static void platform_delay(uint32_t ms);
 static void Bootloader_Handoff(void);
+static void Disable_Caches(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -595,6 +596,19 @@ static void platform_delay(uint32_t ms)
 }
 
 /*
+ * @brief  Turn off the caches the bootloader left enabled
+ *
+ * Built with -O2 on purpose: CMSIS 5.1.1 SCB_DisableDCache() disables the
+ * cache before cleaning it, so at -O0 its loop counters live on the (cached)
+ * stack, get read back stale from RAM and the loop never ends.
+ */
+__attribute__((optimize("O2"))) static void Disable_Caches(void)
+{
+  SCB_DisableICache();
+  SCB_DisableDCache();
+}
+
+/*
  * @brief  Clean hand-off from the Arduino bootloader
  *
  * The bootloader (mbed based) jumps to 0x08040000 without a reset, so the
@@ -626,8 +640,7 @@ static void Bootloader_Handoff(void)
   }
 
   /* Caches off and MPU off, as after reset */
-  SCB_DisableDCache();
-  SCB_DisableICache();
+  Disable_Caches();
   HAL_MPU_Disable();
 
   /* Reset every peripheral the bootloader may have used */
