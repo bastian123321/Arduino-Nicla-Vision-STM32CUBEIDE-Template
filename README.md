@@ -23,7 +23,8 @@ blue LED from TIM7.
 4. First time only: **double-tap reset** on the board.
 5. *Run → External Tools → Upload via USB (Arduino bootloader)*. If it's not in the
    menu, look under *External Tools Configurations… → Program*.
-6. Open the new COM port at any baud rate to see the sensor data.
+6. Open the new COM port (any baud rate except 1200, which reboots the board into the
+   bootloader) to see the sensor data.
 
 ## Flash layout
 
