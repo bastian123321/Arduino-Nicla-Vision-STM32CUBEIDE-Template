@@ -42,6 +42,9 @@
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 #endif
 
+/* Start of the CM4 image in flash (must match CM4/STM32H747AIIX_FLASH.ld) */
+#define CM4_IMAGE_ADDRESS    0x08100000U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -77,6 +80,7 @@ static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, ui
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len);
 static void tx_com( uint8_t *tx_buffer, uint16_t len );
 static void platform_delay(uint32_t ms);
+static void Bootloader_Handoff(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -93,7 +97,14 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-  // Boot up the M4 core as is set to have it off by default using fuses
+  // We are started by the Arduino bootloader (or by SWD): take over the
+  // vector table and clean up whatever state the bootloader left behind
+  Bootloader_Handoff();
+
+  // Boot up the M4 core as is set to have it off by default using fuses.
+  // Point it at its image first, the same way the Arduino core does.
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  HAL_SYSCFG_CM4BootAddConfig(SYSCFG_BOOT_ADDR0, CM4_IMAGE_ADDRESS);
   HAL_RCCEx_EnableBootCore(RCC_BOOT_C2);
 
   /* USER CODE END 1 */
@@ -581,6 +592,97 @@ static void tx_com(uint8_t *tx_buffer, uint16_t len)
 static void platform_delay(uint32_t ms)
 {
   HAL_Delay(ms);
+}
+
+/*
+ * @brief  Clean hand-off from the Arduino bootloader
+ *
+ * The bootloader (mbed based) jumps to 0x08040000 without a reset, so the
+ * chip is not in the state CubeMX code expects after power-on:
+ *  - caches are enabled and peripherals (USB, I2C2, GPIO...) are configured
+ *  - CM7 still has clocks enabled on D2 peripherals: while CM7 owns anything
+ *    in D2, the D2 domain can never enter STOP and the CM4 boot handshake in
+ *    main() times out into Error_Handler()
+ * SystemInit() already reset the clock tree, here we undo the rest so the
+ * application starts exactly as it does after a reset with SWD.
+ */
+static void Bootloader_Handoff(void)
+{
+  extern uint32_t g_pfnVectors[];
+
+  __disable_irq();
+
+  /* Our own vector table, wherever we were linked */
+  SCB->VTOR = (uint32_t)g_pfnVectors;
+  __DSB();
+  __ISB();
+
+  /* No interrupts left over from the bootloader */
+  SysTick->CTRL = 0;
+  for (uint32_t i = 0; i < 8; i++)
+  {
+    NVIC->ICER[i] = 0xFFFFFFFFU;
+    NVIC->ICPR[i] = 0xFFFFFFFFU;
+  }
+
+  /* Caches off and MPU off, as after reset */
+  SCB_DisableDCache();
+  SCB_DisableICache();
+  HAL_MPU_Disable();
+
+  /* Reset every peripheral the bootloader may have used */
+  __HAL_RCC_AHB1_FORCE_RESET();
+  __HAL_RCC_AHB2_FORCE_RESET();
+  __HAL_RCC_AHB3_FORCE_RESET();
+  __HAL_RCC_AHB4_FORCE_RESET();
+  __HAL_RCC_APB1L_FORCE_RESET();
+  __HAL_RCC_APB1H_FORCE_RESET();
+  __HAL_RCC_APB2_FORCE_RESET();
+  __HAL_RCC_APB3_FORCE_RESET();
+  __HAL_RCC_APB4_FORCE_RESET();
+  __HAL_RCC_AHB1_RELEASE_RESET();
+  __HAL_RCC_AHB2_RELEASE_RESET();
+  __HAL_RCC_AHB3_RELEASE_RESET();
+  __HAL_RCC_AHB4_RELEASE_RESET();
+  __HAL_RCC_APB1L_RELEASE_RESET();
+  __HAL_RCC_APB1H_RELEASE_RESET();
+  __HAL_RCC_APB2_RELEASE_RESET();
+  __HAL_RCC_APB3_RELEASE_RESET();
+  __HAL_RCC_APB4_RELEASE_RESET();
+
+  /* ...and give up CM7's clock enables (reset values) so D2 can go to STOP.
+   * AHB3ENR also holds the FLASH/TCM/AXI SRAM bits: only touch peripherals. */
+  RCC->AHB1ENR  = 0;
+  RCC->AHB2ENR  = 0;
+  RCC->AHB3ENR &= ~(RCC_AHB3ENR_MDMAEN | RCC_AHB3ENR_DMA2DEN | RCC_AHB3ENR_JPGDECEN |
+                    RCC_AHB3ENR_FMCEN | RCC_AHB3ENR_QSPIEN | RCC_AHB3ENR_SDMMC1EN);
+  RCC->AHB4ENR  = 0;
+  RCC->APB1LENR = 0;
+  RCC->APB1HENR = 0;
+  RCC->APB2ENR  = 0;
+  RCC->APB3ENR  = 0;
+  RCC->APB4ENR  = RCC_APB4ENR_RTCAPBEN;
+  __DSB();
+
+  __enable_irq();
+}
+
+/*
+ * @brief  Reboot into the Arduino bootloader (DFU mode)
+ *
+ * Called on the "1200 baud touch". The bootloader stays in DFU mode instead
+ * of starting the application when it finds 0xDF59 in RTC backup register 0.
+ */
+void Enter_Arduino_Bootloader(void)
+{
+  __disable_irq();
+
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_RTC_CLK_ENABLE();
+  RTC->BKP0R = ARDUINO_BOOTLOADER_MAGIC;
+  __DSB();
+
+  NVIC_SystemReset();
 }
 /* USER CODE END 4 */
 
