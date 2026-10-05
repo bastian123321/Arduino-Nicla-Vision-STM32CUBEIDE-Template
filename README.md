@@ -25,7 +25,8 @@ This is the same layout Arduino uses with the "1MB M7 + 1MB M4" flash split.
   peripheral resets/clock enables back to their reset state. Without it, the clock
   enables the bootloader left on D2 peripherals (USB, I2C2) stop the D2 domain from
   entering STOP. The CM4 boot handshake then times out and the CM7 ends up in
-  `Error_Handler()`.
+  `Error_Handler()`. The caches are turned off from an `-O2` helper, because the
+  CMSIS 5.1.1 `SCB_DisableDCache()` in this project hangs in a `-O0` Debug build.
 * The CM4 boot address is set to `0x08100000` before CM4 is released.
 * `CM7/USB_DEVICE/App/usbd_cdc_if.c`: the **1200-baud touch**. If you open the COM port at
   1200 baud and drop DTR, the board writes `0xDF59` to `RTC->BKP0R` and resets, and the
