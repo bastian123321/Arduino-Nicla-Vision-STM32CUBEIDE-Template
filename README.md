@@ -5,7 +5,25 @@ that is flashed through the **stock Arduino bootloader over USB (DFU)**. You don
 to erase the bootloader, and you don't need an ST-Link.
 
 The demo: CM7 powers up the PMIC rails, enumerates a USB CDC port ("NICLA Vision
-VCPort") and prints LSM6DSOX accelerometer, gyro and temperature data. CM4 runs a TIM7 tick.
+VCPort") and prints LSM6DSOX accelerometer, gyro and temperature data. CM4 blinks the
+blue LED from TIM7.
+
+> **Starting a new project, or converting an existing one?** Follow
+> **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**. It covers every step from
+> creating the CubeMX project (pins, clocks, PMIC, USB) to the bootloader changes, the
+> 1200-baud auto-reset, `.bin` output, the upload script and the CubeIDE button, plus
+> troubleshooting.
+
+## Quick start with this repository
+
+1. `git clone https://github.com/bastian123321/Arduino-Nicla-Vision-STM32CUBEIDE-Template.git`
+2. STM32CubeIDE → *File → Import → Existing Projects into Workspace* → select the
+   cloned folder, tick both `_CM7` and `_CM4` projects.
+3. Build both (**Ctrl+B**).
+4. First time only: **double-tap reset** on the board.
+5. *Run → External Tools → Upload via USB (Arduino bootloader)*. If it's not in the
+   menu, look under *External Tools Configurations… → Program*.
+6. Open the new COM port at any baud rate to see the sensor data.
 
 ## Flash layout
 
