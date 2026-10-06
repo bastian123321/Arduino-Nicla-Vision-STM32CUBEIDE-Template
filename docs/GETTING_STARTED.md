@@ -4,9 +4,16 @@ This guide starts from an empty STM32CubeIDE workspace and ends with a dual-core
 project that you build in CubeIDE and upload through the **Arduino bootloader
 over USB**. You don't need an ST-Link and you don't erase the bootloader.
 
-If you just want to use this repository as-is, read the
-[README](../README.md). Use this guide when you are starting a new project or
-converting an existing one.
+You don't have to start from zero: the repository contains two finished projects
+that follow this guide exactly (see the [README](../README.md)):
+
+* **[`NICLA_VISION_TEMPLATE`](../NICLA_VISION_TEMPLATE)**: sections 3–5 and 7–8,
+  without USB. The minimal starting point.
+* **[`NICLA_VISION_USB_CDC_HS`](../NICLA_VISION_USB_CDC_HS)**: the same plus USB CDC
+  (section 4.3) and the 1200-baud auto-reset (section 6).
+
+Use this guide to understand what those projects contain, to build your own from
+scratch, or to convert an existing project.
 
 **Contents**
 
@@ -98,18 +105,19 @@ The board wiring sets these pins, so configure them as follows:
 | PA2 | USB PHY reset | GPIO_Output, label **`USB_PHY_RST`**, pull-down, initial low | CM7 |
 | PA3, PA5, PB0, PB1, PB5, PB10–PB13, PC0, PC2_C, PC3_C | USB ULPI | USB_OTG_HS → **External Phy: Device_Only** (ULPI) | CM7 |
 | PE3 / PC13 / PF4 | LED red / green / blue (active low) | GPIO_Output, labels `LED_R`, `LED_G`, `LED_B`, initial **high** (= off) | any |
-| PF7 / PF8 / PF11 | SPI5 SCK / MISO / MOSI | SPI5 Full-Duplex Master | CM7 (LSM6DSOX IMU) |
-| PF6 | IMU chip-select | GPIO_Output, label `CS_up`, initial high | CM7 |
 | PA13 / PA14 | SWD | SYS → Debug: **Serial Wire** | – |
+
+The PA2 and ULPI rows are only needed for USB. On-board sensors use other pins,
+for example the LSM6DSOX IMU on SPI5 (PF7 SCK, PF8 MISO, PF11 MOSI, PF6 chip-select).
+Add those only when you use them.
 
 For each pin, set **Pin Context Assignment** (right-click in the pinout view) to
 the core that uses it.
 
-### 3.3 Middleware
+### 3.3 Middleware (only for USB)
 
 * **USB_DEVICE (CortexM7)** → Class for HS IP: **Communication Device Class
-  (Virtual Port Com)**. Change the product string if you like (this project uses
-  `NICLA Vision VCPort`).
+  (Virtual Port Com)**. Change the product string if you like.
 * USB_OTG_HS speed: **Full Speed** (`PCD_SPEED_FULL`), with the OTG_HS global
   interrupt enabled in NVIC.
 
@@ -119,9 +127,10 @@ the core that uses it.
   **mandatory**: the bootloader already set the supply to LDO, and that register
   can only be written once per power-up.
 * HSE = **25 MHz**, bypass.
-* PLL1: HSE → `/M = 5`, `×N = 48`, `/P = 2` → **SYSCLK = 120 MHz** (raise it if you
-  need to; this project runs at 120 MHz).
-* HSI48 on (USB clock source).
+* PLL1 from HSE with `/M = 5`. Pick the speed you need, for example:
+  * `×N = 192`, `/P = 2` → **480 MHz** (CPU), HCLK 240 MHz, voltage scale 0 (`NICLA_VISION_TEMPLATE`);
+  * `×N = 48`, `/P = 2`, `/Q = 5` → **120 MHz**, with 48 MHz on PLL1Q for USB
+    (`NICLA_VISION_USB_CDC_HS`).
 
 ### 3.5 Project Manager → Advanced Settings
 
@@ -204,8 +213,8 @@ Send data with `CDC_Transmit_HS(buf, len)` (include `usbd_cdc_if.h`).
 ### 4.4 CM4 core
 
 The CM4 project needs nothing special. The generated boot sequence (HSEM
-notification, then STOP until the CM7 releases it) is correct. In this repo the
-CM4 blinks the blue LED from TIM7.
+notification, then STOP until the CM7 releases it) is correct. In both example
+projects the CM4 just boots and idles in its main loop, ready for your code.
 
 ---
 
@@ -484,13 +493,11 @@ Every build now produces `Debug/<project>_CM7.bin` and `Debug/<project>_CM4.bin`
 
 ### 8.1 The script
 
-Copy [`tools/upload.ps1`](../tools/upload.ps1) into a `tools` folder in the project
-root, next to `CM4/`, `CM7/` and the `.ioc`. Then set the project name near the
-top of the script:
-
-```powershell
-$ProjectName = 'MY_NICLA'      # the part of 'MY_NICLA_CM7' before _CM7
-```
+Copy the `tools` folder from either example project
+([`NICLA_VISION_TEMPLATE/tools/upload.ps1`](../NICLA_VISION_TEMPLATE/tools/upload.ps1))
+into your project root, next to `CM4/`, `CM7/` and the `.ioc`. **Don't edit it.**
+It takes the project name from the `.ioc` file: `MY_NICLA.ioc` means it looks for
+`CM7/Debug/MY_NICLA_CM7.bin` and `CM4/Debug/MY_NICLA_CM4.bin`.
 
 The script:
 
@@ -515,7 +522,7 @@ in the script so the port is found automatically.
 ### 8.2 A button in CubeIDE: what's a `.launch` file?
 
 CubeIDE (Eclipse) stores every saved *Run* / *External Tools* configuration as a
-small XML `.launch` file. This repo has one,
+small XML `.launch` file. Each example project has one,
 `CM7/Upload via USB (Arduino bootloader).launch`, which runs `powershell.exe`
 with `tools\upload.ps1`. When the file is inside a project, CubeIDE lists it
 automatically.
@@ -543,8 +550,10 @@ automatically.
 
 **Option B: copy the file**
 
-1. Copy `CM7/Upload via USB (Arduino bootloader).launch` into your CM7 folder.
-2. In a text editor, replace both `NICLA_VISION_USB_SPI_CM7` with your CM7 project name.
+1. Copy `CM7/Upload via USB (Arduino bootloader).launch` from an example project
+   into your CM7 folder.
+2. In a text editor, replace both `NICLA_VISION_TEMPLATE_CM7` (or
+   `NICLA_VISION_USB_CDC_HS_CM7`) with your CM7 project name.
 3. In CubeIDE select the project and press **F5** (refresh).
 
 **It doesn't appear under *Run → External Tools*:** that menu only shows
@@ -592,7 +601,7 @@ debug configuration:
 |---------|-------------|
 | Upload OK, but no COM port and the board seems dead | Firmware hangs early. Double-tap reset to recover. Check that `Bootloader_Handoff()` is the **first** call in `main()`, that `Disable_Caches()` has the `optimize("O2")` attribute, that the CM4 image was uploaded, and that the supply is LDO. |
 | `Bootloader (2341:035f) did not show up` | The firmware lacks the 1200-baud code, or it is hung. Double-tap reset and run again. |
-| `Missing ...\CM7\Debug\..._CM7.bin` | "Convert to binary file" isn't enabled for that project/configuration (section 7), or `$ProjectName` is wrong. |
+| `Missing ...\CM7\Debug\..._CM7.bin` | "Convert to binary file" isn't enabled for that project/configuration (section 7), or the `tools` folder is not next to the `.ioc` file. |
 | `dfu-util not found` | Install the Arduino Mbed OS Nicla Boards core, or pass `-DfuUtil C:\path\dfu-util.exe`. |
 | `dfu-util: Cannot open DFU device` / `LIBUSB_ERROR` | The Windows DFU driver is missing. Installing the Nicla core in the Arduino IDE installs it (`post_install.bat`). |
 | Board stays in the bootloader after every reset | `RTC->BKP0R` still holds `0xDF59`: something called `Enter_Arduino_Bootloader()`. Or the app at `0x08040000` is invalid (wrong linker address or stack outside RAM). |

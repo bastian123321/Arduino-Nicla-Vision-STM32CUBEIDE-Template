@@ -1,103 +1,90 @@
-# Nicla Vision – STM32CubeIDE firmware, uploaded over USB
+# Arduino Nicla Vision – STM32CubeIDE templates (USB upload via the Arduino bootloader)
 
-STM32CubeIDE (HAL, dual core) firmware for the **Arduino Nicla Vision** (STM32H747AII6)
-that is flashed through the **stock Arduino bootloader over USB (DFU)**. You don't need
-to erase the bootloader, and you don't need an ST-Link.
+Dual-core STM32CubeIDE (HAL) starting points for the **Arduino Nicla Vision**
+(STM32H747AII6). They are flashed through the **stock Arduino bootloader over USB
+(DFU)**, so you keep the bootloader and don't need an ST-Link.
 
-The demo: CM7 powers up the PMIC rails, enumerates a USB CDC port ("NICLA Vision
-VCPort") and prints LSM6DSOX accelerometer, gyro and temperature data. CM4 blinks the
-blue LED from TIM7.
+## The projects
 
-> **Starting a new project, or converting an existing one?** Follow
-> **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**. It covers every step from
-> creating the CubeMX project (pins, clocks, PMIC, USB) to the bootloader changes, the
-> 1200-baud auto-reset, `.bin` output, the upload script and the CubeIDE button, plus
-> troubleshooting.
+| Project | What it does | Start from it when… |
+|---------|--------------|---------------------|
+| **[`NICLA_VISION_TEMPLATE`](NICLA_VISION_TEMPLATE)** | Bare board bring-up: bootloader hand-off, 480 MHz clock, MPU and caches, PMIC power rails over I2C2, CM4 boot. The green LED blinks so you can see it runs. | you want a clean base and add your own peripherals |
+| **[`NICLA_VISION_USB_CDC_HS`](NICLA_VISION_USB_CDC_HS)** | The same bring-up (at 120 MHz) **plus USB CDC (virtual COM port) on the USB HS peripheral with the ULPI PHY**. USB starts only *after* the PMIC has powered the PHY, and the 1200-baud auto-reset lets uploads run without pressing reset. Prints `Device Found!` and toggles the green LED every second. | you want `printf`-style output / a serial link to the PC |
 
-## Quick start with this repository
+Both are complete CubeMX projects (`.ioc` included). All custom code is inside
+`USER CODE` blocks, so you can open the `.ioc`, add peripherals and regenerate.
 
-1. `git clone https://github.com/bastian123321/Arduino-Nicla-Vision-STM32CUBEIDE-Template.git`
-2. STM32CubeIDE → *File → Import → Existing Projects into Workspace* → select the
-   cloned folder, tick both `_CM7` and `_CM4` projects.
-3. Build both (**Ctrl+B**).
-4. First time only: **double-tap reset** on the board.
-5. *Run → External Tools → Upload via USB (Arduino bootloader)*. If it's not in the
-   menu, look under *External Tools Configurations… → Program*.
-6. Open the new COM port (any baud rate except 1200, which reboots the board into the
-   bootloader) to see the sensor data.
+> **New to this, or converting your own project?** Read
+> **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**. It explains every step
+> from an empty workspace: pins, clocks, PMIC, USB, the bootloader changes, the
+> 1200-baud auto-reset, `.bin` output, the upload script and the CubeIDE button,
+> plus troubleshooting.
+
+## Quick start
+
+1. Install **STM32CubeIDE**, and the **Arduino IDE** with the *Arduino Mbed OS Nicla
+   Boards* core. That core provides `dfu-util` and the USB driver.
+2. `git clone https://github.com/bastian123321/Arduino-Nicla-Vision-STM32CUBEIDE-Template.git`
+3. In STM32CubeIDE: *File → Import → General → Existing Projects into Workspace*,
+   select the project folder (e.g. `NICLA_VISION_USB_CDC_HS`), and tick its `_CM7`
+   and `_CM4` projects.
+4. Build both (**Ctrl+B**).
+5. **Double-tap reset** on the board (the green LED pulses: bootloader mode).
+6. *Run → External Tools → Upload via USB (Arduino bootloader)*. If it isn't in the
+   menu yet, look under *External Tools Configurations… → Program*.
+
+   Or from a terminal in the project folder:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\tools\upload.ps1
+   ```
+
+With `NICLA_VISION_USB_CDC_HS` running, later uploads need no double-tap. The
+script reboots the board into the bootloader through its COM port. Open that COM
+port at any baud rate except 1200 (1200 is the reboot signal) to see the output.
 
 ## Flash layout
 
-| Region                    | Address                  | Who writes it            |
-|---------------------------|--------------------------|--------------------------|
-| Arduino bootloader        | `0x08000000–0x0803FFFF`  | factory (read-only over DFU) |
-| **CM7 application**       | `0x08040000–0x080FFFFF`  | `CM7` project            |
-| **CM4 application**       | `0x08100000–0x081FFFFF`  | `CM4` project            |
+| Region             | Address                   | Written by                         |
+|--------------------|---------------------------|------------------------------------|
+| Arduino bootloader | `0x08000000–0x0803FFFF`   | factory (read-only over DFU)       |
+| CM7 application    | `0x08040000–0x080FFFFF`   | `<project>_CM7` (768 KB)           |
+| CM4 application    | `0x08100000–0x081FFFFF`   | `<project>_CM4` (1 MB)             |
 
-This is the same layout Arduino uses with the "1MB M7 + 1MB M4" flash split.
+## What makes these projects bootloader-compatible
 
-## Differences from a bare-metal (SWD at 0x08000000) CubeMX project
+Compared with a plain CubeMX project flashed by SWD at `0x08000000`:
 
-* `CM7/STM32H747AIIX_FLASH.ld`: `FLASH` starts at `0x08040000` (768K).
-* `CM7/Core/Src/main.c`, `Bootloader_Handoff()`: the bootloader jumps to the app
-  *without* a reset. This function puts VTOR, NVIC, caches, MPU and the RCC
-  peripheral resets/clock enables back to their reset state. Without it, the clock
-  enables the bootloader left on D2 peripherals (USB, I2C2) stop the D2 domain from
-  entering STOP. The CM4 boot handshake then times out and the CM7 ends up in
-  `Error_Handler()`. The caches are turned off from an `-O2` helper, because the
-  CMSIS 5.1.1 `SCB_DisableDCache()` in this project hangs in a `-O0` Debug build.
-* The CM4 boot address is set to `0x08100000` before CM4 is released.
-* `CM7/USB_DEVICE/App/usbd_cdc_if.c`: the **1200-baud touch**. If you open the COM port at
-  1200 baud and drop DTR, the board writes `0xDF59` to `RTC->BKP0R` and resets, and the
-  bootloader then stays in DFU mode. This is the same mechanism the Arduino IDE uses.
-  `GET/SET_LINE_CODING` are implemented properly as well.
-* Both projects have *Convert to binary file* enabled, so every build produces a `.bin`.
+* **CM7 linker script:** `FLASH` starts at `0x08040000` (768 KB).
+* **`Bootloader_Handoff()`**: the first call in CM7 `main()`. The bootloader jumps
+  in *without a reset*, so this function restores VTOR, NVIC, caches, MPU, and the
+  RCC peripheral resets and clock enables. Otherwise the D2 domain can't enter
+  STOP and the CM4 boot handshake ends in `Error_Handler()`. The caches are turned
+  off from an `-O2` helper because CMSIS 5.1.1 `SCB_DisableDCache()` hangs at `-O0`.
+* **CM4 boot address** is set to `0x08100000` before CM4 is released.
+* **Supply = LDO.** The bootloader already configured it, and it can only be set
+  once per power-up.
+* **`.bin` output** is enabled for both cores, in Debug and Release.
+* **`tools/upload.ps1`** plus a CubeIDE launcher (`CM7/Upload via USB (Arduino bootloader).launch`)
+  that writes CM4 → `0x08100000` and CM7 → `0x08040000` with `dfu-util`.
+* *USB CDC project only:* **1200-baud touch.** Opening the port at 1200 baud and
+  dropping DTR writes `0xDF59` to `RTC->BKP0R` and resets, and the bootloader then
+  stays in DFU mode. This is the same trick the Arduino IDE uses.
 
-Everything is inside `USER CODE` blocks, so regenerating code from the `.ioc` keeps it.
-The linker-script change and the `.cproject` option are outside CubeMX's control
-and survive regeneration as well.
+## Using a template for your own project
 
-## Build
+* **Simplest:** copy the project folder and work in it. The upload script reads the
+  project name from the `.ioc` file, so it needs no edits.
+* **New name:** create a new CubeMX project and follow the guide, copying
+  `tools/` and the code blocks from a template. Renaming an existing dual-core
+  CubeIDE project means renaming the `.ioc`, both `.project` names and the
+  `.launch` files, which is easy to get wrong.
 
-Open STM32CubeIDE → *File → Import → General → Existing Projects into Workspace* →
-select this folder (tick both `NICLA_VISION_USB_SPI_CM7` and `_CM4`) → build both
-(`Ctrl+B`).
-
-## Upload over USB
-
-Requirements: the Arduino IDE with the **Arduino Mbed OS Nicla Boards** core installed.
-It provides `dfu-util` and the Windows DFU driver.
-
-From CubeIDE: *Run → External Tools → Upload via USB (Arduino bootloader)*. The first
-time, open *External Tools Configurations…* and you will find it under *Program*.
-
-From a terminal:
-
-```powershell
-.\tools\upload.ps1                 # Debug build, both cores
-.\tools\upload.ps1 -Config Release
-.\tools\upload.ps1 -Core CM7       # only the M7 image
-```
-
-The script does the 1200-baud touch on the running board, or waits for you to
-**double-tap reset** (the green LED pulses). It then writes CM4 → `0x08100000` and
-CM7 → `0x08040000` with `dfu-util` and starts the firmware.
-
-> **Upload both cores at least once.** CM7 waits for CM4 to boot. If `0x08100000`
-> is empty, CM7 stops in `Error_Handler()`.
-
-If the firmware ever hangs before USB comes up, **double-tap reset** to get back to
-the bootloader. Nothing you upload this way can overwrite it.
+**Upload both cores at least once.** The CM7 waits for the CM4 during start-up. If
+the firmware ever hangs before USB comes up, **double-tap reset** to get back to
+the bootloader. Uploads over USB can't overwrite the bootloader.
 
 ## Debugging with an ST-Link (optional)
 
-SWD debugging still works without removing the bootloader. The launch configuration
-programs only the application sectors. On reset the bootloader runs first, then jumps
-into your code, and breakpoints in `main()` are still hit.
-
-## Restoring the bootloader
-
-If a board has had its bootloader erased, flash
-`%LOCALAPPDATA%\Arduino15\packages\arduino\hardware\mbed_nicla\<ver>\bootloaders\NICLA_VISION\bootloader.bin`
-at `0x08000000` with STM32CubeProgrammer, or use *Burn Bootloader* in the Arduino IDE
-with a debugger attached.
+The normal CubeIDE debug configurations still work with the bootloader in place.
+They only program the application sectors. On reset the bootloader runs first,
+then jumps into your code, and breakpoints in `main()` are still hit.
