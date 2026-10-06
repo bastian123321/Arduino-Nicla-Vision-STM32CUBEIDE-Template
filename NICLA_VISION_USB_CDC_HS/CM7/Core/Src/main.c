@@ -478,6 +478,25 @@ static void tx_comusb(uint8_t *tx_buffer, uint16_t len)
 {
   CDC_Transmit_HS(tx_buffer, len);
 }
+
+/*
+ * @brief  Reboot into the Arduino bootloader (DFU mode)
+ *
+ * Called on the "1200 baud touch" (see usbd_cdc_if.c), so tools/upload.ps1 can
+ * flash the board without a double-tap on reset. The bootloader stays in DFU
+ * mode instead of starting the application when it finds 0xDF59 in RTC->BKP0R.
+ */
+void Enter_Arduino_Bootloader(void)
+{
+  __disable_irq();
+
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_RTC_CLK_ENABLE();
+  RTC->BKP0R = ARDUINO_BOOTLOADER_MAGIC;
+  __DSB();
+
+  NVIC_SystemReset();
+}
 /* USER CODE END 4 */
 
 /**

@@ -42,6 +42,9 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
 
+/* RTC->BKP0R value that keeps the Arduino bootloader in DFU mode after reset */
+#define ARDUINO_BOOTLOADER_MAGIC   0xDF59U
+
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -53,6 +56,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+void Enter_Arduino_Bootloader(void);
 
 /* USER CODE END EFP */
 

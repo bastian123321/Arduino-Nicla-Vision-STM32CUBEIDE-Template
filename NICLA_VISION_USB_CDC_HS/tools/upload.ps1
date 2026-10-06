@@ -35,7 +35,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root        = Split-Path -Parent $PSScriptRoot
-$ProjectName = 'NICLA_VISION_USB_CDC_HS'
+# Project name = name of the .ioc file next to the tools folder (e.g. MY_NICLA.ioc
+# -> MY_NICLA_CM7 / MY_NICLA_CM4), so this script can be copied unchanged
+$ioc = Get-ChildItem -Path $Root -Filter *.ioc | Select-Object -First 1
+if (-not $ioc) { throw "No .ioc file found in $Root - put the tools folder in the project root." }
+$ProjectName = $ioc.BaseName
 $DfuId       = '2341:035f'   # Nicla Vision bootloader VID:PID
 $Cm7Address  = '0x08040000'  # Bootloader owns 0x08000000-0x0803FFFF
 $Cm4Address  = '0x08100000'

@@ -22,6 +22,8 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
+#include <string.h>
+#include "main.h"
 
 /* USER CODE END INCLUDE */
 
@@ -96,6 +98,10 @@ uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
 
+/* Line coding as last set by the host (baud LE32, stop bits, parity, data bits) */
+static uint8_t line_coding[7] = { 0x00, 0xC2, 0x01, 0x00, 0x00, 0x00, 0x08 }; /* 115200 8N1 */
+static uint8_t dtr_active = 0;
+
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -129,6 +135,7 @@ static int8_t CDC_Receive_HS(uint8_t* pbuf, uint32_t *Len);
 static int8_t CDC_TransmitCplt_HS(uint8_t *pbuf, uint32_t *Len, uint8_t epnum);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
+static void CDC_Check_1200bps_Touch(void);
 
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
@@ -223,15 +230,18 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   /* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
   /*******************************************************************************/
   case CDC_SET_LINE_CODING:
-
+    memcpy(line_coding, pbuf, sizeof(line_coding));
+    CDC_Check_1200bps_Touch();
     break;
 
   case CDC_GET_LINE_CODING:
-
+    memcpy(pbuf, line_coding, sizeof(line_coding));
     break;
 
   case CDC_SET_CONTROL_LINE_STATE:
-
+    /* No data stage: pbuf is the setup request, DTR is bit 0 of wValue */
+    dtr_active = (((USBD_SetupReqTypedef *)pbuf)->wValue & 0x0001U) != 0U;
+    CDC_Check_1200bps_Touch();
     break;
 
   case CDC_SEND_BREAK:
@@ -315,6 +325,24 @@ static int8_t CDC_TransmitCplt_HS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+
+/**
+  * @brief  Arduino style "1200 baud touch"
+  *         Opening the port at 1200 baud and closing it (DTR low) reboots the
+  *         board into the Arduino bootloader so it can be flashed over DFU.
+  */
+static void CDC_Check_1200bps_Touch(void)
+{
+  uint32_t baud = (uint32_t)line_coding[0]
+                | ((uint32_t)line_coding[1] << 8)
+                | ((uint32_t)line_coding[2] << 16)
+                | ((uint32_t)line_coding[3] << 24);
+
+  if ((baud == 1200U) && !dtr_active)
+  {
+    Enter_Arduino_Bootloader();
+  }
+}
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
